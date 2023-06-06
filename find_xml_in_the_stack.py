@@ -4,9 +4,10 @@ import bs4
 import json
 import argparse
 import pandas as pd
-from typing import List
+from typing import Hashable, List
 from bs4 import BeautifulSoup
 from pathlib import Path
+import concurrent.futures
 
 def get_exclusions() -> List[str]:
     with open('exclude_files.txt', 'r') as f:
@@ -17,10 +18,10 @@ def get_doctype(soup: bs4.BeautifulSoup) -> str:
     items = [item for item in soup.contents if isinstance(item, bs4.Doctype)]
     return items[0] if items else None
 
-def handle_content(idx: int, row: pd.Series, PREFIX: str, errors: List[str], exclusions: List[str]) -> None:
+def handle_content(idx: Hashable, row: pd.Series, PREFIX: str, errors: List[str], exclusions: List[str]) -> None:
     content = row['content']
     # Check the first 500 bytes for <!DOCTYPE
-    if '<!DOCTYPE' in content[:500]:
+    if '<!DOCTYPE' in content[:500] and 'OASIS' in content[:500]:
         try:
             # Parse content with BeautifulSoup
             soup = BeautifulSoup(content, 'lxml')
@@ -79,15 +80,24 @@ def main():
     exclusions = get_exclusions()
 
     errors = []
-    for filename in args.filenames:
-        df = pd.read_parquet(filename)
-        PREFIX = "<!DOCTYPE "
-        for idx, row in df.iterrows():
-            handle_content(idx, row, PREFIX, errors, exclusions)
+    # for filename in args.filenames:
+    #     handle_parquet(filename, errors, exclusions)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        executor.map(lambda filename: handle_parquet(filename, errors, exclusions), args.filenames)
 
     print("\nErrors:")
     for error in errors:
         print(error)
+
+PREFIX = "<!DOCTYPE "
+
+def handle_parquet(filename: str, errors: List[str], exclusions: List[str]):
+    print("Parsing", filename)
+    df = pd.read_parquet(filename)
+    
+    for idx, row in df.iterrows():
+        handle_content(idx, row, PREFIX, errors, exclusions)
+
 
 if __name__ == "__main__":
     main()
