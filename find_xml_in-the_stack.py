@@ -10,8 +10,8 @@ from pathlib import Path
 
 def get_exclusions() -> List[str]:
     with open('exclude_files.txt', 'r') as f:
-        exclusions = [line.strip() for line in f.readlines()]
-    return exclusions
+        exclusions = [line.strip().lower() for line in f.readlines()]
+    return tuple(filter(None, exclusions))
 
 def get_doctype(soup: bs4.BeautifulSoup) -> str:
     items = [item for item in soup.contents if isinstance(item, bs4.Doctype)]
@@ -20,7 +20,7 @@ def get_doctype(soup: bs4.BeautifulSoup) -> str:
 def handle_content(idx: int, row: pd.Series, PREFIX: str, errors: List[str], exclusions: List[str]) -> None:
     content = row['content']
     # Check the first 500 bytes for <!DOCTYPE
-    if '\n<!DOCTYPE' in content[:500] and "PUBLIC" in content[:500]:
+    if '<!DOCTYPE' in content[:500]:
         try:
             # Parse content with BeautifulSoup
             soup = BeautifulSoup(content, 'lxml')
@@ -29,29 +29,34 @@ def handle_content(idx: int, row: pd.Series, PREFIX: str, errors: List[str], exc
                 # Remove prefix from DOCTYPE
                 root = doctype.removeprefix(PREFIX).strip()
                 if root:
+                    # Find doctype to make doctype directories
+                    doctype_dir_name = root.split(" ", 1)[0]
+                    doctype_dir_name = doctype_dir_name.strip('"')
+                    if (doctype_dir_name.lower() in exclusions):
+                        return
                     # Remove the second string enclosed in double quotes
                     root = root.split('"')[0]
                     # Replace every sub-string of non-alpha-numeric characters with a dash
                     root = re.sub('\W+', '-', root)
                     # Check against exclusion list
-                    if any(root.startswith(exclusion) for exclusion in exclusions):
-                        return
-                    # Split the root to create directory structure
-                    dir_name, file_name = root.split(" ", 1)
-                    # Remove PUBLIC or SYSTEM from the file_name
-                    file_name = file_name.replace("PUBLIC", "").replace("SYSTEM", "").strip()
+                    
+                    path = Path(row["max_stars_repo_path"])
                     # Create directories and save the content
-                    dir_path = f'xml/{dir_name}/{file_name}/{row["max_stars_repo_name"]}/{row["max_stars_repo_path"]}'
-                    Path(dir_path).mkdir(parents=True, exist_ok=True)
+                    parent_dir = f'xml/{doctype_dir_name}/{row["max_stars_repo_name"]}/{path.parent}'
+                    Path(parent_dir).mkdir(parents=True, exist_ok=True)
                     # Save content
-                    xml_file_name = f'{dir_path}/{os.path.basename(row["max_stars_repo_path"])}'
+                    xml_file_name = f'{parent_dir}/{path.name}'
                     with open(xml_file_name, 'w') as file:
                         file.write(content)
                     print(f"Saved content to: {xml_file_name}")
                     # Save the row data to a JSON file
-                    json_file_name = xml_file_name.replace('.xml', '.json')
+                    json_file_name = f"{xml_file_name}.json"
                     row.to_json(json_file_name)
                     print(f"Saved metadata to: {json_file_name}")
+                else:
+                    print("No root", row["max_stars_repo_path"])
+            else:
+                print("No doctype", row["max_stars_repo_path"])
         except Exception as e:
             error_message = f"Error at index {idx} - {str(e)}"
             errors.append(error_message)
