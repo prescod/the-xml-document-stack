@@ -1,3 +1,4 @@
+from functools import partial
 import os
 import re
 import warnings
@@ -45,7 +46,7 @@ def sniff_document_type(soup: bs4.BeautifulSoup):
 
 
 def handle_content(
-    idx: Hashable, row: pd.Series, PREFIX: str, errors: List[str], exclusions: List[str]
+    idx: Hashable, row: pd.Series, PREFIX: str, exclusions: List[str]
 ) -> None:
     content = row["content"]
     # Check the first 500 bytes for <!DOCTYPE
@@ -84,7 +85,6 @@ def handle_content(
         except Exception as e:
             error_message = f"Error at index {idx} - {str(e)}"
             print(error_message)
-            errors.append(error_message)
             dir_path = "xml/__BAD"
             Path(dir_path).mkdir(parents=True, exist_ok=True)
             # Save content
@@ -102,32 +102,35 @@ def main():
     parser.add_argument(
         "filenames", metavar="N", type=str, nargs="+", help="an input parquet filename"
     )
+    parser.add_argument(
+        "--parallel", action="store_true", default=False, help="Enable parallel processing. May be slower!"
+    )
+
     args = parser.parse_args()
 
     exclusions = get_exclusions()
 
-    errors = []
-    for filename in args.filenames:
-        handle_parquet(filename, errors, exclusions)
+    if  args.parallel:
+        func = partial(handle_parquet, exclusions=exclusions)
 
-    # with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-    #     executor.map(lambda filename: handle_parquet(filename, errors, exclusions), args.filenames)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
+            tuple(executor.map(func , args.filenames))
+        print("DONE")
+    else:
+        for filename in args.filenames:
+            handle_parquet(filename, exclusions)
 
-
-    print("\nErrors:")
-    for error in errors:
-        print(error)
 
 
 PREFIX = "<!DOCTYPE "
 
 
-def handle_parquet(filename: str, errors: List[str], exclusions: List[str]):
+def handle_parquet(filename: str, exclusions: List[str]):
     print("Parsing", filename)
     df = pd.read_parquet(filename)
 
     for idx, row in df.iterrows():
-        handle_content(idx, row, PREFIX, errors, exclusions)
+        handle_content(idx, row, PREFIX, exclusions)
 
 
 if __name__ == "__main__":
