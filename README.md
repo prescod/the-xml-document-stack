@@ -2,7 +2,9 @@
 
 1. Set up a `venv` with `requirements.txt`
 
-2. Download HuggingFace documents onto cache and symlink in
+2. Set up hugging face auth with the [huggingface-cli login](https://huggingface.co/docs/huggingface_hub/quick-start#login)
+
+3. Download HuggingFace documents onto cache and symlink in
    the `dataset_bin` directory like this:
 
    `python download-xml-from-stack.py`
@@ -11,7 +13,7 @@
 
    `python download-xml-from-stack.py 100`
 
-3. Extract relevant XML files into a subdirectory like this:
+4. Extract relevant XML files into a subdirectory like this:
 
     `python find_xml_in_the_stack.py dataset_bin/data/xml/train-00*`
 
