@@ -1,4 +1,8 @@
 dataset_bin/**
-xml/**
+dataset_bin_txt/**
+# xml/**
 __pycache__/**
 xml_old/**
+text/**
+xml/**
+out/**
