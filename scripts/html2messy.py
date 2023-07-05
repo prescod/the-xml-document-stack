@@ -32,23 +32,23 @@ class MessyMarkdownConverter(MarkdownConverter):
 
         super().__init__(**options)
     
-    def process_tag(self, node, convert_as_inline, children_only=False):
+    def process_tag(self, node, *args, **kwargs):
         if node.name == "title":
             return ""
-        return super().process_tag(node, convert_as_inline, children_only)
+        return super().process_tag(node, *args, **kwargs)
 
-    def convert_b(self, el, text):
+    def convert_b(self, el, text, *args):
         if self.capitalize_bold:
             text = text.upper()
-        return super().convert_b(el, text)
+        return super().convert_b(el, text, *args)
     
-    def convert_blockquote(self, el, text, convert_as_inline):
+    def convert_blockquote(self, el, text, *args):
         if self.blockquote_style != MARKDOWN_BQ_STYLE:
             bq_prefix = self.blockquote_style
             lines = text.split("\n")
             lines = [f"{bq_prefix} {line}" for line in lines]
             text = "\n".join(lines)
-        return super().convert_blockquote(el, text, convert_as_inline)
+        return super().convert_blockquote(el, text, *args)
 
 # ', 'convert_br', 'convert_code', 'convert_del', 'convert_em', 'convert_hn', 'convert_hr', 'convert_i', 'convert_img', 'convert_kbd', 'convert_li', 'convert_list', 'convert_ol', 'convert_p', 'convert_pre', 'convert_s', 'convert_samp', 'convert_soup', 'convert_strong', 'convert_sub', 'convert_sup', 'convert_table', 'convert_td', 'convert_th', 'convert_tr', 'convert_ul'
 

@@ -1,4 +1,5 @@
 import argparse
+import multiprocessing
 import pathlib
 import subprocess
 import tempfile
@@ -12,7 +13,6 @@ def parse_arguments():
 
 def adjust_image_paths_and_create_placeholders(input_file, temp_dir):
     nsmap = {'d': 'http://dita.oasis-open.org/architecture/2005/'}
-    print(input_file)
 
     parser = etree.XMLParser(remove_blank_text=True)
     tree = etree.parse(str(input_file), parser)
@@ -38,6 +38,15 @@ def process_file(input_file, input_dir, output_dir):
     # Ignore files smaller than 2K
     if input_file.stat().st_size < 2048:
         return
+    # Prepare the output file name
+    relative_path = input_file.relative_to(input_dir)
+    md_output_dir = output_dir / relative_path.with_suffix('')
+    md_output_dir.mkdir(parents=True, exist_ok=True)
+
+    outfile = (md_output_dir / input_file.name)
+
+    if outfile.exists():
+        return
 
     # Create a temporary directory
     with tempfile.TemporaryDirectory() as temp_dir_name:
@@ -50,10 +59,6 @@ def process_file(input_file, input_dir, output_dir):
         # Adjust image paths and create placeholder image files
         adjust_image_paths_and_create_placeholders(temp_file, temp_dir)
 
-        # Prepare the output file name
-        relative_path = input_file.relative_to(input_dir)
-        md_output_dir = output_dir / relative_path.with_suffix('')
-        md_output_dir.mkdir(parents=True, exist_ok=True)
 
         # Prepare the error output file name
         error_file = md_output_dir / ("error_" + input_file.stem + '.error')
@@ -66,7 +71,8 @@ def process_file(input_file, input_dir, output_dir):
         if result.returncode != 0:
             with open(error_file, 'w') as ef:
                 ef.write(result.stderr.decode())
-        (md_output_dir / input_file.name).write_text(input_file.read_text())
+        outfile.write_text(input_file.read_text())
+        print(outfile)
 
         command = f"dita --input={temp_file} --format=html5 --output={md_output_dir}"
         result = subprocess.run(command, shell=True, stderr=subprocess.PIPE)
@@ -76,6 +82,19 @@ def process_file(input_file, input_dir, output_dir):
             with open(error_file, 'w') as ef:
                 ef.write(result.stderr.decode())
 
+def process_file_wrapper(args):
+    try:
+        process_file(*args)
+    except Exception as e:
+        print(f"Error processing {args[0]}: {e}")
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("input_dir")
+    parser.add_argument("output_dir")
+    parser.add_argument("--num-processes", type=int, default=8)
+    return parser.parse_args()
+
 def main():
     args = parse_arguments()
 
@@ -84,11 +103,11 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Use glob to find all .dita or .xml files in input directory (recursive)
-    for input_file in list(input_dir.rglob('*.dita')) + list(input_dir.rglob('*.xml')):
-        try:
-            process_file(input_file, input_dir, output_dir)
-        except Exception as e:
-            print(f"Error processing {input_file}: {e}")
+    files_to_process = list(input_dir.rglob('*.dita')) + list(input_dir.rglob('*.xml'))
+    arguments_to_process = [(input_file, input_dir, output_dir) for input_file in files_to_process]
+
+    with multiprocessing.Pool(args.num_processes) as p:
+        p.map(process_file_wrapper, arguments_to_process)
 
     print("Conversion complete.")
 
